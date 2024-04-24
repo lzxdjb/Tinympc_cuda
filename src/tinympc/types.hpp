@@ -5,10 +5,7 @@
 
 using Eigen::Matrix;
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
+
 
     typedef Matrix<tinytype, NSTATES, 1> tiny_VectorNx;
     typedef Matrix<tinytype, NINPUTS, 1> tiny_VectorNu;
@@ -103,8 +100,7 @@ extern "C"
         TinySettings *settings; // Problem settings
         TinyCache *cache;       // Problem cache
         TinyWorkspace *work;    // Solver workspace
+        int a = 0;
     } TinySolver;
 
-#ifdef __cplusplus
-}
-#endif
+

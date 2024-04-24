@@ -25,6 +25,8 @@ TinyWorkspace work;
 TinySettings settings;
 TinySolver solver{&settings, &cache, &work};
 
+
+
 int main()
 {
     // Map data from problem_data (array in row-major order)
@@ -86,9 +88,9 @@ int main()
     // std::cout << work.Xref << std::endl;
 
     // for (int k = 0; k < 50; ++k)
-    for (int j = 0; j < 1000; j++)
-    {
-        for (int k = 0; k < NTOTAL - NHORIZON - 1; ++k)
+    // for (int j = 0; j < 1000; j++)
+    // {
+        for (int k = 0; k < 1; ++k)
         {
             // std::cout << "tracking error: " << (x0 - work.Xref.col(1)).norm() << std::endl;
 
@@ -103,7 +105,7 @@ int main()
             // work.g = tiny_MatrixNxNh::Zero();
 
             // 4. Solve MPC problem
-            // printf("asdfasdf");
+            // std::cout<<solver.cache;
             tiny_solve_cuda(&solver);
             hello();
 
@@ -116,7 +118,7 @@ int main()
 
             // std::cout << x0.transpose().format(CleanFmt) << std::endl;
         }
-    }
+    // }
 
     return 0;
 }
