@@ -11,10 +11,10 @@
 
 __global__ void solve_kernel(TinySolver *solver)
 {    
-    printf("asdfasd");
+    // printf("asdfasd");
 
     // int i = blockIdx.x * blockDim.x + threadIdx.x;
-    solver->cache->rho = 0.5;
+    solver->cache->rho = 0.51928472;
     solver->settings->max_iter= 10;
     // // printf(solver);
     // // TinyCache *cache_gpu = solver->cache;
@@ -37,9 +37,7 @@ __global__ void solve_kernel(TinySolver *solver)
 
 int tiny_solve_cuda(TinySolver *solver)
 {
-    // Initialize variables]
-    // printf("asdfdsfsd");
-
+   
     solver->work->status = 1; // TINY_UNSOLVED
     solver->work->iter = 0;
 
@@ -58,7 +56,6 @@ int tiny_solve_cuda(TinySolver *solver)
 
     checkCudaErrors(cudaMalloc((void**)&device_workspace, sizeof(TinyWorkspace)));
     checkCudaErrors(cudaMemcpy(device_workspace ,solver->work ,sizeof(TinyWorkspace), cudaMemcpyHostToDevice));
-    // checkCudaErrors(cudaMemcpy(solver_gpu ,solver ,sizeof(TinySolver), cudaMemcpyHostToDevice));
     
     TinyCache * host_cache;
     TinySettings *host_setting;
@@ -81,18 +78,23 @@ int tiny_solve_cuda(TinySolver *solver)
     
     solve_kernel<<<1 , 32>>>(solver_gpu);
 
-    TinySolver * debug;
-    // checkCudaErrors(cudaMallocHost((void**)&debug, sizeof(TinySolver)));
+    TinyCache * debug_cache;
+    checkCudaErrors(cudaMallocHost((void**)&debug_cache, sizeof(TinyCache)));
+    checkCudaErrors(cudaMemcpy(debug_cache, solver_gpu->cache, sizeof(TinySolver), cudaMemcpyDeviceToHost));
 
-    // checkCudaErrors(cudaMemcpy(debug, solver_gpu, sizeof(TinySolver), cudaMemcpyDeviceToHost));
+    TinyCache * debug_setting;
+    checkCudaErrors(cudaMallocHost((void**)&debug_setting, sizeof(TinySettings)));
+    checkCudaErrors(cudaMemcpy(debug_setting, solver_gpu->settings, sizeof(TinySettings), cudaMemcpyDeviceToHost));
 
-    // std::cout<<debug->cache->rho ;
+    TinyCache * debug_workspace;
+    checkCudaErrors(cudaMallocHost((void**)&debug_workspace, sizeof(TinyWorkspace)));
+    checkCudaErrors(cudaMemcpy(debug_workspace, solver_gpu->work, sizeof(TinyWorkspace), cudaMemcpyDeviceToHost));
+
+    std::cout<<debug_cache->rho ;
     checkCudaErrors(cudaDeviceSynchronize());
 
     
-    // checkCudaErrors(cudaMemcpy(solver, solver_gpu, sizeof(TinySolver), cudaMemcpyDeviceToHost));
-    // checkCudaErrors(cudaMemcpy(solver->settings, solver_gpu->settings, sizeof(TinySettings), cudaMemcpyDeviceToHost));
-    // checkCudaErrors(cudaMemcpy(solver->work, solver_gpu->work, sizeof(TinyWorkspace), cudaMemcpyDeviceToHost));
+ 
    
 
     exit(0);
