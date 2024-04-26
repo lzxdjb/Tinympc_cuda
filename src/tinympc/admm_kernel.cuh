@@ -20,3 +20,24 @@ __device__ static inline double  dot_product(double *a , double *b , int number)
     return result;
 }
 
+
+__device__ static inline void  debug(double *a , int number)
+{
+    
+    for (int i = 0 ; i < number ;i++)
+    {
+        printf("%f " , a[i]);
+    }
+  
+}
+
+__device__ static inline void  get_column(double *cache , double * temp , int iteration , int colunm)
+{
+    
+    for (int i = 0 ; i < iteration ;i++)
+    {
+        temp[i] = cache[colunm];
+    }
+  
+}
+

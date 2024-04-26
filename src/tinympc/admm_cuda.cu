@@ -19,93 +19,94 @@ __global__ void solve_kernel(TinySolver *solver)
 {
     int idx = threadIdx.x;
 
-    double uCache[4] = {0};
-    double xCache[12] = {0};
+    double KinfCache[12] = {0};
+    double AdynCache[12] = {0};
+    double BdynCache[4] = {0};
 
+   
+    if(idx < 4)
+    {
+        for (int i = 0; i < 12; i++)
+        {
+            KinfCache[i] = solver->cache->Kinf.row(idx)[i];
+        }
+    }
+        
     for (int i = 0; i < 12; i++)
     {
-        xCache[i] = solver->work->x.col(idx)[i];
+        AdynCache[i] = solver->work->Adyn.row(idx)[i];
     }
-
-    double bigxCache[12][10] = {0};
-
-    for (int j = 0 ; j < 12 ; j++)
-    {
-        for (int i = 0 ; i < 10 ; i++)
-        {
-            bigxCache[j][i] =  solver->work->x.row(j)[i];
-        }
-    }
-
   
-    double KinfCache[4][12] = {0};
-    double AdynCache[12][12] = {0};
-    double BdynCache[12][4] = {0};
-
-    for (int j = 0; j < 4; j++)
-    {
-        for (int i = 0; i < 12; i++)
-        {
-            KinfCache[j][i] = solver->cache->Kinf.row(j)[i];
-        }
-    }
-
-    for (int j = 0; j < 12; j++)
-    {
-        for (int i = 0; i < 12; i++)
-        {
-            AdynCache[j][i] = solver->work->Adyn.row(j)[i];
-        }
-    }
-
-    for (int j = 0; j < 12; j++)
-    {
-        for (int i = 0; i < 4; i++)
-        {
-            BdynCache[j][i] = solver->work->Bdyn.row(j)[i];
-        }
-    }
-
-    double dCache[4] = {0};
     for (int i = 0; i < 4; i++)
     {
-        dCache[i] = solver->work->d.col(idx)[i];
+        BdynCache[i] = solver->work->Bdyn.row(idx)[i];
     }
 
-    for (int i = 0; i < 4; i++)
+    __shared__ double uCache[4][9] ;
+    __shared__ double xCache[12][10] ;
+    __shared__ double dCache[4][9];
+
+
+    if(idx < 4)
     {
-        uCache[i] = solver->work->u.col(idx)[i];
+      for (int i = 0 ; i < 4 ; i ++)
+      {
+        for (int j = 0 ; j < 9 ; j ++)
+        {
+            uCache[i][j] = solver->work->u.row(i)[j];
+        }
+      }
+
+      for (int i = 0 ; i < 4 ; i ++)
+      {
+        for (int j = 0 ; j < 9 ; j ++)
+        {
+            dCache[i][j] = solver->work->d.row(i)[j];
+        }
+      }
+    }
+
+    for(int i = 0 ; i < 12 ; i ++)
+    {
+        for(int j = 0 ; j < 10 ; j ++)
+        {
+            xCache[i][j] = solver->work->x.row(i)[j];
+        }
     }
 
     double temp_x[12] = {0};
-    for (int k = 0 ; k < 12 ; k++)
-    {
-        temp_x[k] = bigxCache[k][idx];
-    }
+    double temp_u[4] = {0};
+    double temp_d[4] = {0};
+
+    __syncthreads();
 
     // work
     for (int iteration = 0; iteration < ITERATION; iteration++)
     {
-        for (int i = 0; i < 4; i++)
+      for (int i = 0 ; i < NHORIZON - 1 ; i++)
+      {
+        if(idx < 4)
         {
-            // uCache[i] = - temp[i] -
-           
-            uCache[i] = - dot_product(KinfCache[i], temp_x, 12) - dCache[i];
-        }
-        for (int i = 0; i < 12; i++)
-        {
-            // uCache[i] = - temp[i] -
-            xCache[i] = dot_product(AdynCache[i], temp_x , 12) + dot_product(BdynCache[i] , uCache , 4);
-        }
-
-        __syncthreads();
-
-        for (int k = 0 ; k < 12 ; k++)
-        {
-            bigxCache[k][idx + 1] = xCache[k];
+            for (int j = 0 ; j < 12 ; j++)
+            {
+                temp_x[j] = xCache[j][i];
+            }
+            // debug(temp_x , 12);
+            uCache[idx][i] = - dot_product(KinfCache , temp_x , 12) - dCache[idx][i];
         }
 
         __syncthreads();
+
+        // for (int j = 0 ; j < 4 ; j++)
+        // {
+        //     temp_u[j] = uCache[j][i];
+        // }
+        // xCache[idx][i + 1] = dot_product(AdynCache , temp_x , 12) + dot_product(BdynCache , temp_u , 4);
+
+        // __syncthreads();
+
+      }
+
 
     }
 
@@ -114,17 +115,18 @@ __global__ void solve_kernel(TinySolver *solver)
 
     ////work
 
-    for (int i = 0; i < 4; i++)
+    if(idx < 4)
     {
-        solver->work->u.col(idx)[i] = uCache[i];
-    }
-
-    for (int j = 0; j < 12; j++)
-    {
-        for (int i = 0; i < 12; i++)
+        for (int i = 0; i < 9; i++)
         {
-            bigxCache[j][i] = solver->work->x.row(j)[i];
+            solver->work->u.row(idx)[i] = uCache[idx][i];
         }
+    }
+    
+
+    for (int j = 0; j < 10; j++)
+    {
+     solver->work->x.row(idx)[j] = xCache[idx][j];
     }
 }
 
@@ -174,7 +176,7 @@ int tiny_solve_cuda(TinySolver *solver)
 
     start = clock(); // Record starting time
 
-    solve_kernel<<<1, 9>>>(solver_gpu);
+    solve_kernel<<<1, 12>>>(solver_gpu);
 
     end = clock(); // Record ending time
     cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
@@ -192,12 +194,12 @@ int tiny_solve_cuda(TinySolver *solver)
     checkCudaErrors(cudaMallocHost((void **)&debug_workspace, sizeof(TinyWorkspace)));
     checkCudaErrors(cudaMemcpy(debug_workspace, solver_gpu->work, sizeof(TinyWorkspace), cudaMemcpyDeviceToHost));
 
-    std::cout << "cuda_version = " << debug_workspace->x << std::endl;
+    std::cout << "cuda_version = \n" << debug_workspace->u << std::endl;
     checkCudaErrors(cudaDeviceSynchronize());
 
     start = clock(); // Record starting time
 
-    for (int u = 0; u < ITERATION; u++)
+    for (int k = 0; k < ITERATION; k++)
     {
         forward_pass(solver);
     }
@@ -207,7 +209,7 @@ int tiny_solve_cuda(TinySolver *solver)
     cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
     printf("eigen CPU time used: %f seconds\n", cpu_time_used);
 
-    std::cout << "orginal = " << solver->work->x << std::endl;
+    std::cout << "orginal = \n" << solver->work->u << std::endl;
 
     exit(0);
 
