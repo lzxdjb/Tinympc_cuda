@@ -26,9 +26,8 @@ __device__ static inline void  debug(double *a , int number)
     
     for (int i = 0 ; i < number ;i++)
     {
-        printf("%f " , a[i]);
+        printf("%lf " , a[i]);
     }
-  
 }
 
 __device__ static inline void  get_column(double *cache , double * temp , int iteration , int colunm)

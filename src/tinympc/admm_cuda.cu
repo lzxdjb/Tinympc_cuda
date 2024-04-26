@@ -8,7 +8,7 @@
 #include <cuda_runtime.h>
 
 #define TOTAL_SIZE 9
-#define ITERATION 1
+#define ITERATION 100000
 #define checkCudaErrors(x) check((x), #x, __FILE__, __LINE__)
 
 clock_t start, end;
@@ -18,6 +18,8 @@ double cpu_time_used;
 __global__ void solve_kernel(TinySolver *solver)
 {
     int idx = threadIdx.x;
+
+    // printf("%d  " , idx);
 
     double KinfCache[12] = {0};
     double AdynCache[12] = {0};
@@ -83,37 +85,47 @@ __global__ void solve_kernel(TinySolver *solver)
     // work
     for (int iteration = 0; iteration < ITERATION; iteration++)
     {
-      for (int i = 0 ; i < NHORIZON - 1 ; i++)
+      for (int i = 0 ; i < 9 ; i++)
       {
+
         if(idx < 4)
         {
             for (int j = 0 ; j < 12 ; j++)
             {
                 temp_x[j] = xCache[j][i];
             }
-            // debug(temp_x , 12);
+
+            
             uCache[idx][i] = - dot_product(KinfCache , temp_x , 12) - dCache[idx][i];
+
+           
         }
 
         __syncthreads();
 
-        // for (int j = 0 ; j < 4 ; j++)
-        // {
-        //     temp_u[j] = uCache[j][i];
-        // }
-        // xCache[idx][i + 1] = dot_product(AdynCache , temp_x , 12) + dot_product(BdynCache , temp_u , 4);
+        for (int j = 0 ; j < 4 ; j++)
+        {
+            temp_u[j] = uCache[j][i];
+        }
 
-        // __syncthreads();
+        for (int j = 0 ; j < 12 ; j++)
+        {
+            temp_x[j] = xCache[j][i];
+        }
+
+     
+
+        xCache[idx][i + 1] = dot_product(AdynCache , temp_x , 12) + dot_product(BdynCache , temp_u , 4);
+
+        __syncthreads();
+
 
       }
 
 
     }
 
-
-  
-
-    ////work
+   
 
     if(idx < 4)
     {
@@ -122,6 +134,9 @@ __global__ void solve_kernel(TinySolver *solver)
             solver->work->u.row(idx)[i] = uCache[idx][i];
         }
     }
+
+   
+
     
 
     for (int j = 0; j < 10; j++)
@@ -194,7 +209,7 @@ int tiny_solve_cuda(TinySolver *solver)
     checkCudaErrors(cudaMallocHost((void **)&debug_workspace, sizeof(TinyWorkspace)));
     checkCudaErrors(cudaMemcpy(debug_workspace, solver_gpu->work, sizeof(TinyWorkspace), cudaMemcpyDeviceToHost));
 
-    std::cout << "cuda_version = \n" << debug_workspace->u << std::endl;
+    std::cout << "cuda_version = \n \n" << debug_workspace->x << std::endl;
     checkCudaErrors(cudaDeviceSynchronize());
 
     start = clock(); // Record starting time
@@ -209,7 +224,7 @@ int tiny_solve_cuda(TinySolver *solver)
     cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
     printf("eigen CPU time used: %f seconds\n", cpu_time_used);
 
-    std::cout << "orginal = \n" << solver->work->u << std::endl;
+    std::cout << "orginal = \n" << solver->work->x << std::endl;
 
     exit(0);
 

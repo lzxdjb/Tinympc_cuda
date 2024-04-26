@@ -1,5 +1,5 @@
 #pragma once
-
+#include <iostream>
 #include "types.hpp"
 
 void backward_pass_grad(TinySolver *solver)
@@ -19,13 +19,15 @@ void forward_pass(TinySolver *solver)
 {
     // solver->work->u.col(1)[3] = 10;
 
-    for (int i = 0; i < NHORIZON - 1; i++)
+    for (int i = 0; i < 9; i++)
     {
         (solver->work->u.col(i)).noalias() = -solver->cache->Kinf.lazyProduct(solver->work->x.col(i)) - solver->work->d.col(i);
+
+       
       
 
 
-        // (solver->work->x.col(i + 1)).noalias() = solver->work->Adyn.lazyProduct(solver->work->x.col(i)) + solver->work->Bdyn.lazyProduct(solver->work->u.col(i));
+        (solver->work->x.col(i + 1)).noalias() = solver->work->Adyn.lazyProduct(solver->work->x.col(i)) + solver->work->Bdyn.lazyProduct(solver->work->u.col(i));
     }
 }
 
