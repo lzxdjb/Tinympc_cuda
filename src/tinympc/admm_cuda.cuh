@@ -21,5 +21,5 @@ void hello();
 
 
 
-#define NHORIZON 10
-#define NUM_THREADS 256
+// #define NHORIZON 10
+// #define NUM_THREADS 256

@@ -17,6 +17,7 @@
 #include <tinympc/admm_cuda.cuh>
 #include "problem_data/quadrotor_20hz_params.hpp"
 #include "trajectory_data/quadrotor_20hz_y_axis_line.hpp"
+// #include <cuda_runtime.h>
 
 Eigen::IOFormat CleanFmt(4, 0, ", ", "\n", "[", "]");
 

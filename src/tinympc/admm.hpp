@@ -7,6 +7,7 @@ void backward_pass_grad(TinySolver *solver)
     for (int i = NHORIZON - 2; i >= 0; i--)
     {
         (solver->work->d.col(i)).noalias() = solver->cache->Quu_inv * (solver->work->Bdyn.transpose() * solver->work->p.col(i + 1) + solver->work->r.col(i));
+
         (solver->work->p.col(i)).noalias() = solver->work->q.col(i) + solver->cache->AmBKt.lazyProduct(solver->work->p.col(i + 1)) - (solver->cache->Kinf.transpose()).lazyProduct(solver->work->r.col(i));
     }
 }
@@ -16,12 +17,14 @@ void backward_pass_grad(TinySolver *solver)
  */
 void forward_pass(TinySolver *solver)
 {
+    // solver->work->u.col(1)[3] = 10;
+
     for (int i = 0; i < NHORIZON - 1; i++)
     {
         (solver->work->u.col(i)).noalias() = -solver->cache->Kinf.lazyProduct(solver->work->x.col(i)) - solver->work->d.col(i);
-        // solver->work->u.col(i) << .001, .02, .3, 4;
-        // DEBUG_PRINT("u(0): %f\n", solver->work->u.col(0)(0));
-        // multAdyn(solver->Ax->cache.Adyn, solver->work->x.col(i));
+      
+
+
         (solver->work->x.col(i + 1)).noalias() = solver->work->Adyn.lazyProduct(solver->work->x.col(i)) + solver->work->Bdyn.lazyProduct(solver->work->u.col(i));
     }
 }
@@ -68,9 +71,12 @@ void update_linear_cost(TinySolver *solver)
 {
     solver->work->r = -(solver->work->Uref.array().colwise() * solver->work->R.array()); // Uref = 0 so commented out for speed up. Need to uncomment if using Uref
     (solver->work->r).noalias() -= solver->cache->rho * (solver->work->znew - solver->work->y);
+
     solver->work->q = -(solver->work->Xref.array().colwise() * solver->work->Q.array());
     (solver->work->q).noalias() -= solver->cache->rho * (solver->work->vnew - solver->work->g);
+
     solver->work->p.col(NHORIZON - 1) = -(solver->work->Xref.col(NHORIZON - 1).transpose().lazyProduct(solver->cache->Pinf));
+    
     solver->work->p.col(NHORIZON - 1) -= solver->cache->rho * (solver->work->vnew.col(NHORIZON - 1) - solver->work->g.col(NHORIZON - 1));
 }
 
