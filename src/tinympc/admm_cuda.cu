@@ -135,9 +135,6 @@ __global__ void solve_kernel(TinySolver *solver)
         }
     }
 
-   
-
-    
 
     for (int j = 0; j < 10; j++)
     {
