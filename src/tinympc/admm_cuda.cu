@@ -8,12 +8,11 @@
 #include <cuda_runtime.h>
 
 #define TOTAL_SIZE 9
-#define ITERATION 100000
+#define ITERATION 1
 #define checkCudaErrors(x) check((x), #x, __FILE__, __LINE__)
 
 clock_t start, end;
 double cpu_time_used;
-
 
 __global__ void solve_kernel(TinySolver *solver)
 {
@@ -25,125 +24,213 @@ __global__ void solve_kernel(TinySolver *solver)
     double AdynCache[12] = {0};
     double BdynCache[4] = {0};
 
-   
-    if(idx < 4)
+    double u_min[9] = {0};
+    double u_max[9] = {0};
+
+    double x_min[10] = {0};
+    double x_max[10] = {0};
+
+    if (idx < 4)
     {
         for (int i = 0; i < 12; i++)
         {
             KinfCache[i] = solver->cache->Kinf.row(idx)[i];
         }
+
+        for(int i = 0 ; i < 9 ; i++)
+        {
+            u_min[i] = solver->work->u_min.row(idx)[i];
+        }
+
+        for(int i = 0 ; i < 9 ; i++)
+        {
+            u_max[i] = solver->work->u_max.row(idx)[i];
+        }
     }
-        
+
     for (int i = 0; i < 12; i++)
     {
         AdynCache[i] = solver->work->Adyn.row(idx)[i];
     }
-  
+
     for (int i = 0; i < 4; i++)
     {
         BdynCache[i] = solver->work->Bdyn.row(idx)[i];
     }
 
-    __shared__ double uCache[4][9] ;
-    __shared__ double xCache[12][10] ;
-    __shared__ double dCache[4][9];
-
-
-    if(idx < 4)
+    for (int i = 0 ; i < 10 ; i ++)
     {
-      for (int i = 0 ; i < 4 ; i ++)
-      {
-        for (int j = 0 ; j < 9 ; j ++)
-        {
-            uCache[i][j] = solver->work->u.row(i)[j];
-        }
-      }
-
-      for (int i = 0 ; i < 4 ; i ++)
-      {
-        for (int j = 0 ; j < 9 ; j ++)
-        {
-            dCache[i][j] = solver->work->d.row(i)[j];
-        }
-      }
+        x_max[i] = solver->work->x_max.row(idx)[i];
     }
 
-    for(int i = 0 ; i < 12 ; i ++)
+    for (int i = 0 ; i < 10 ; i ++)
     {
-        for(int j = 0 ; j < 10 ; j ++)
+        x_min[i] = solver->work->x_min.row(idx)[i];
+    }
+
+    __shared__ double uCache[4][9];
+    __shared__ double xCache[12][10];
+    __shared__ double dCache[4][9];
+
+    if (idx < 4)
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            for (int j = 0; j < 9; j++)
+            {
+                uCache[i][j] = solver->work->u.row(i)[j];
+            }
+        }
+
+        for (int i = 0; i < 4; i++)
+        {
+            for (int j = 0; j < 9; j++)
+            {
+                dCache[i][j] = solver->work->d.row(i)[j];
+            }
+        }
+    }
+
+    for (int i = 0; i < 12; i++)
+    {
+        for (int j = 0; j < 10; j++)
         {
             xCache[i][j] = solver->work->x.row(i)[j];
         }
     }
 
     double temp_x[12] = {0};
-    double temp_u[4] = {0};
-    double temp_d[4] = {0};
+    double temp_u[9] = {0};
+    double temp_d[9] = {0};
+
+    double znew_cache[9] = {0};
+    double y_cache[9] = {0};
+    double vnew_cache[10] = {0};
+    double g_cache[10] = {0};
+
+    for (int i = 0; i < 9; i++)
+    {
+        y_cache[i] = solver->work->y.row(idx)(i);
+    }
+
+    for (int i = 0; i < 10; i++)
+    {
+        g_cache[i] = solver->work->g.row(idx)(i);
+    }
+
+    int en_input_bound = solver->settings->en_input_bound;
+
+    int en_state_bound = solver->settings->en_state_bound;
 
     __syncthreads();
 
-    // work
+////////// work
     for (int iteration = 0; iteration < ITERATION; iteration++)
     {
-      for (int i = 0 ; i < 9 ; i++)
-      {
 
-        if(idx < 4)
+        // forword_pass
+        for (int i = 0; i < 9; i++)
         {
-            for (int j = 0 ; j < 12 ; j++)
+
+            if (idx < 4)
+            {
+                for (int j = 0; j < 12; j++)
+                {
+                    temp_x[j] = xCache[j][i];
+                }
+
+                uCache[idx][i] = -dot_product(KinfCache, temp_x, 12) - dCache[idx][i];
+            }
+
+            __syncthreads();
+
+            for (int j = 0; j < 4; j++)
+            {
+                temp_u[j] = uCache[j][i];
+            }
+
+            for (int j = 0; j < 12; j++)
             {
                 temp_x[j] = xCache[j][i];
             }
 
+            xCache[idx][i + 1] = dot_product(AdynCache, temp_x, 12) + dot_product(BdynCache, temp_u, 4);
+
+            __syncthreads();
+        }
+
+        // update_slack
+        if (idx < 4)
+        {
+            for (int i = 0; i < 9; i++)
+            {
+                temp_u[i] = uCache[idx][i];
+            }
+
+            for (int i = 0; i < 9; i++)
+            {
+                znew_cache[i] = temp_u[i] + y_cache[i];
+            }
+
+            // Box constraints on input
+            if(en_input_bound)
+            {
+                for(int i = 0 ; i < 9 ; i++)
+                {
+                    znew_cache[i] = min(u_max[i] , max(u_min[i] ,                  znew_cache[i]));
+                }
+               
+            }
             
-            uCache[idx][i] = - dot_product(KinfCache , temp_x , 12) - dCache[idx][i];
 
-           
         }
 
-        __syncthreads();
-
-        for (int j = 0 ; j < 4 ; j++)
+        for (int i = 0; i < 10; i++)
         {
-            temp_u[j] = uCache[j][i];
+            temp_x[i] = xCache[idx][i];
         }
 
-        for (int j = 0 ; j < 12 ; j++)
+        for (int i = 0; i < 10; i++)
         {
-            temp_x[j] = xCache[j][i];
+            vnew_cache[i] = temp_x[i] + g_cache[i];
         }
 
-     
-
-        xCache[idx][i + 1] = dot_product(AdynCache , temp_x , 12) + dot_product(BdynCache , temp_u , 4);
-
-        __syncthreads();
-
-
-      }
-
+        // Box constraints on state
+        if(en_state_bound)
+        {
+            for (int i = 0 ; i < 10 ; i++)
+            {
+                 vnew_cache[i] = min(x_max[i] , max(x_min[i] ,                  vnew_cache[i])); 
+            }
+        }
+       
 
     }
+////////// load
 
-   
-
-    if(idx < 4)
+    if (idx < 4)
     {
         for (int i = 0; i < 9; i++)
         {
             solver->work->u.row(idx)[i] = uCache[idx][i];
         }
-    }
 
+        for (int i = 0 ; i < 9 ; i++)
+        {
+            solver->work->znew.row(idx)[i] = znew_cache[i];
+        }
+    }
 
     for (int j = 0; j < 10; j++)
     {
-     solver->work->x.row(idx)[j] = xCache[idx][j];
+        solver->work->x.row(idx)[j] = xCache[idx][j];
+    }
+
+    for (int j = 0 ; j < 10 ; j++)
+    {
+        solver->work->vnew.row(idx)[j] = vnew_cache[j];
     }
 }
-
-
-
 
 int tiny_solve_cuda(TinySolver *solver)
 {
@@ -206,7 +293,8 @@ int tiny_solve_cuda(TinySolver *solver)
     checkCudaErrors(cudaMallocHost((void **)&debug_workspace, sizeof(TinyWorkspace)));
     checkCudaErrors(cudaMemcpy(debug_workspace, solver_gpu->work, sizeof(TinyWorkspace), cudaMemcpyDeviceToHost));
 
-    std::cout << "cuda_version = \n \n" << debug_workspace->x << std::endl;
+    std::cout << "cuda_version = \n \n"
+              << debug_workspace->vnew << std::endl;
     checkCudaErrors(cudaDeviceSynchronize());
 
     start = clock(); // Record starting time
@@ -214,6 +302,7 @@ int tiny_solve_cuda(TinySolver *solver)
     for (int k = 0; k < ITERATION; k++)
     {
         forward_pass(solver);
+        update_slack(solver);
     }
 
     end = clock(); // Record ending time
@@ -221,7 +310,8 @@ int tiny_solve_cuda(TinySolver *solver)
     cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
     printf("eigen CPU time used: %f seconds\n", cpu_time_used);
 
-    std::cout << "orginal = \n" << solver->work->x << std::endl;
+    std::cout << "orginal = \n"
+              << solver->work->vnew << std::endl;
 
     exit(0);
 

@@ -40,3 +40,9 @@ __device__ static inline void  get_column(double *cache , double * temp , int it
   
 }
 
+__device__ static inline float maxdiy(double a , double b )
+{
+    
+    return a > b ? a : b;
+}
+
