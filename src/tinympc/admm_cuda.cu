@@ -181,7 +181,12 @@ __global__ void solve_kernel(TinySolver *solver)
                 }
                
             }
-            
+
+            //update_dual
+            for (int i = 0; i < 9; i++)
+            {
+                y_cache[i] += temp_u[i] - znew_cache[i];
+            }            
 
         }
 
@@ -203,6 +208,12 @@ __global__ void solve_kernel(TinySolver *solver)
                  vnew_cache[i] = min(x_max[i] , max(x_min[i] ,                  vnew_cache[i])); 
             }
         }
+
+        //update_dual
+        for (int i = 0; i < 10; i++)
+        {
+            g_cache[i] += temp_x[i] - vnew_cache[i];
+        }     
        
 
     }
@@ -219,6 +230,11 @@ __global__ void solve_kernel(TinySolver *solver)
         {
             solver->work->znew.row(idx)[i] = znew_cache[i];
         }
+
+        for (int i = 0 ; i < 9 ; i++)
+        {
+            solver->work->y.row(idx)[i] = y_cache[i];
+        }
     }
 
     for (int j = 0; j < 10; j++)
@@ -230,6 +246,12 @@ __global__ void solve_kernel(TinySolver *solver)
     {
         solver->work->vnew.row(idx)[j] = vnew_cache[j];
     }
+
+    for (int i = 0 ; i < 10 ; i++)
+    {
+        solver->work->g.row(idx)[i] = g_cache[i];
+    }
+
 }
 
 int tiny_solve_cuda(TinySolver *solver)
@@ -294,7 +316,7 @@ int tiny_solve_cuda(TinySolver *solver)
     checkCudaErrors(cudaMemcpy(debug_workspace, solver_gpu->work, sizeof(TinyWorkspace), cudaMemcpyDeviceToHost));
 
     std::cout << "cuda_version = \n \n"
-              << debug_workspace->vnew << std::endl;
+              << debug_workspace->g << std::endl;
     checkCudaErrors(cudaDeviceSynchronize());
 
     start = clock(); // Record starting time
@@ -303,6 +325,7 @@ int tiny_solve_cuda(TinySolver *solver)
     {
         forward_pass(solver);
         update_slack(solver);
+        update_dual(solver);
     }
 
     end = clock(); // Record ending time
@@ -311,7 +334,7 @@ int tiny_solve_cuda(TinySolver *solver)
     printf("eigen CPU time used: %f seconds\n", cpu_time_used);
 
     std::cout << "orginal = \n"
-              << solver->work->vnew << std::endl;
+              << solver->work->g << std::endl;
 
     exit(0);
 
