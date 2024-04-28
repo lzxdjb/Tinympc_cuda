@@ -419,7 +419,7 @@ __global__ void solve_kernel(TinySolver *solver)
 
             if (temp_prs < abs_pri_tol && temp_pri < abs_pri_tol && temp_drs < abs_pri_tol && temp_dri < abs_dua_tol && temp_drs < abs_dua_tol) // I do not check that.
             {
-                break;
+                // break; // Do not do anything
             }
         }
 
@@ -489,6 +489,8 @@ __global__ void solve_kernel(TinySolver *solver)
           
 
             __syncthreads();
+
+        
         }
     }
 
@@ -496,12 +498,12 @@ __global__ void solve_kernel(TinySolver *solver)
 
     ////////// load
 
-    if (idx < 4)
-    {
-        for (int i = 0; i < 9; i++)
-        {
-            solver->work->u.row(idx)[i] = uCache[idx][i];
-        }
+    // if (idx < 4)
+    // {
+    //     for (int i = 0; i < 9; i++)
+    //     {
+    //         solver->work->u.row(idx)[i] = uCache[idx][i];
+    //     }
 
     //     for (int i = 0; i < 9; i++)
     //     {
@@ -517,12 +519,12 @@ __global__ void solve_kernel(TinySolver *solver)
     //     {
     //         solver->work->r.row(idx)[i] = rCache[idx][i];
     //     }
-    }
+    // }
 
-    for (int j = 0; j < 10; j++)
-    {
-        solver->work->x.row(idx)[j] = xCache[idx][j];
-    }
+    // for (int j = 0; j < 10; j++)
+    // {
+    //     solver->work->x.row(idx)[j] = xCache[idx][j];
+    // }
 
     //     for (int j = 0; j < 10; j++)
     //     {
@@ -590,6 +592,8 @@ int tiny_solve_cuda(TinySolver *solver)
     solver->work->status = 11; // TINY_UNSOLVED
     solver->work->iter = 0;
 
+cpu_time_used = 0 ;
+    start = clock(); // Record starting time
     TinySolver *solver_gpu;
     checkCudaErrors(cudaMallocManaged((void **)&solver_gpu, sizeof(TinySolver)));
 
@@ -627,7 +631,7 @@ int tiny_solve_cuda(TinySolver *solver)
     solver->settings = host_setting;
     solver->work = host_workspace;
 
-    start = clock(); // Record starting time
+
 
     for (int i = 0; i < outerITERATION; i++)
     {
@@ -635,9 +639,9 @@ int tiny_solve_cuda(TinySolver *solver)
     }
 
     end = clock(); // Record ending time
-    cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
-    printf("eigen cudaGPU time used: %f seconds\n", cpu_time_used);
-
+    cpu_time_used += ((double)(end - start)) / CLOCKS_PER_SEC;
+    printf("eigen GPU time used: %f seconds\n", cpu_time_used);
+    
     TinyCache *debug_cache;
     checkCudaErrors(cudaMallocHost((void **)&debug_cache, sizeof(TinyCache)));
     checkCudaErrors(cudaMemcpy(debug_cache, solver_gpu->cache, sizeof(TinySolver), cudaMemcpyDeviceToHost));
@@ -656,7 +660,7 @@ int tiny_solve_cuda(TinySolver *solver)
 
     // exit(0);
 
-
+    cpu_time_used = 0 ;
     start = clock();
 
     for (int j = 0; j < outerITERATION; j++)
@@ -669,11 +673,19 @@ int tiny_solve_cuda(TinySolver *solver)
             update_slack(solver);
             update_dual(solver);
             update_linear_cost(solver);
-            termination_condition(solver);
+            // if(termination_condition(solver))
+            // {
+            //     std::cout<<"k = "<<k <<std::endl;
+            //     break;
+            // }
+            
             solver->work->v = solver->work->vnew;
             solver->work->z = solver->work->znew;
             backward_pass_grad(solver);
         }
+
+        // solver->work->x.Zero() ;
+        // solver->work->u.Zero() ;
     }
 
     end = clock(); // Record ending time
@@ -702,6 +714,7 @@ int tiny_solve_cpu(TinySolver *solver)
             solver->work->v = solver->work->vnew;
             solver->work->z = solver->work->znew;
             backward_pass_grad(solver);
+           
         }
     
 

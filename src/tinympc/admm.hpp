@@ -111,6 +111,7 @@ bool termination_condition(TinySolver *solver)
             solver->work->dual_residual_state < solver->settings->abs_dua_tol &&
             solver->work->dual_residual_input < solver->settings->abs_dua_tol)
         {
+            
             return true;
         }
     }
