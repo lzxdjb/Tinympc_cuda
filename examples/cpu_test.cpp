@@ -1,23 +1,12 @@
-// Quadrotor tracking example
-
-// This script is just to show how to use the library, the data for this example is not tuned for our Crazyflie demo. Check the firmware code for more details.
-
-// Make sure in glob_opts.hpp:
-// - NSTATES = 12, NINPUTS=4
-// - NHORIZON = anything you want
-// - NTOTAL = 301 if using reference trajectory from trajectory_data/
-// - tinytype = float if you want to run on microcontrollers
-// States: x (m), y, z, phi, theta, psi, dx, dy, dz, dphi, dtheta, dpsi
-// phi, theta, psi are NOT Euler angles, they are Rodiguez parameters
-// check this paper for more details: https://ieeexplore.ieee.org/document/9326337
-// Inputs: u1, u2, u3, u4 (motor thrust 0-1, order from Crazyflie)
 
 #include <iostream>
-
+#include <time.h>
 #include <tinympc/admm_cuda.cuh>
 #include "problem_data/quadrotor_20hz_params.hpp"
 #include "trajectory_data/quadrotor_20hz_y_axis_line.hpp"
 // #include <cuda_runtime.h>
+
+// #include <tinympc/admm.hpp>
 
 Eigen::IOFormat CleanFmt(4, 0, ", ", "\n", "[", "]");
 
@@ -25,8 +14,6 @@ TinyCache cache;
 TinyWorkspace work;
 TinySettings settings;
 TinySolver solver{&settings, &cache, &work};
-
-
 
 int main()
 {
@@ -86,40 +73,8 @@ int main()
     // Initial state
     x0 = work.Xref.col(0);
 
-    // std::cout << work.Xref << std::endl;
+    clock_t start, end;
+    double cpu_time_used = 0;
 
-    // for (int k = 0; k < 50; ++k)
-    // for (int j = 0; j < 1000; j++)
-    // {
-        for (int k = 0; k < 1; ++k)
-        {
-            // std::cout << "tracking error: " << (x0 - work.Xref.col(1)).norm() << std::endl;
-
-            // 1. Update measurement
-            work.x.col(0) = x0;
-
-            // 2. Update reference
-            work.Xref = Xref_total.block<NSTATES, NHORIZON>(0, k);
-
-            // 3. Reset dual variables if needed
-            // work.y = tiny_MatrixNuNhm1::Zero();
-            // work.g = tiny_MatrixNxNh::Zero();
-
-            // 4. Solve MPC problem
-            // std::cout<<solver.cache;
-            tiny_solve_cuda(&solver);
-            // hello();
-
-            // std::cout << work.iter << std::endl;
-            // std::cout << work.u.col(0).transpose().format(CleanFmt) << std::endl;
-
-            // 5. Simulate forward
-            x1 = work.Adyn * x0 + work.Bdyn * work.u.col(0);
-            x0 = x1;
-
-            // std::cout << x0.transpose().format(CleanFmt) << std::endl;
-        }
-    // }
-
-    return 0;
+    tiny_solve_cpu(&solver);
 }
