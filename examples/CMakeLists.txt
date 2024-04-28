@@ -1,4 +1,4 @@
-add_executable(quadrotor_tracking quadrotor_tracking.cpp)
+add_executable(quadrotor_tracking quadrotor_tracking.cu)
 target_link_libraries(quadrotor_tracking LINK_PUBLIC tinympc)
 
 # add_executable(quadrotor_hovering quadrotor_hovering.cpp)
@@ -15,3 +15,6 @@ target_link_libraries(cpu_test LINK_PUBLIC tinympc)
 
 add_executable(cuda_test cuda_test.cpp)
 target_link_libraries(cuda_test LINK_PUBLIC tinympc)
+
+add_executable(same_function_test same_function_test.cu)
+target_link_libraries(same_function_test LINK_PUBLIC tinympc)

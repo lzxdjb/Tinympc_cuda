@@ -21,6 +21,11 @@ void forward_pass(TinySolver *solver)
 
     for (int i = 0; i < 9; i++)
     {
+
+        // std::cout<<"solver->cache->Kinf " << solver->cache->Kinf<<std::endl;
+        // std::cout<<"solver->work->x " << solver->work->x<<std::endl;
+        // std::cout<<"solver->work->d " << solver->work->d<<std::endl;
+
         (solver->work->u.col(i)).noalias() = -solver->cache->Kinf.lazyProduct(solver->work->x.col(i)) - solver->work->d.col(i);
 
        

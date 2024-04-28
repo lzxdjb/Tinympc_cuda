@@ -18,7 +18,6 @@ int tiny_solve_cuda(TinySolver *solver);
 int tiny_solve_cpu(TinySolver *solver);
 
 
-void hello();
 
 
 
