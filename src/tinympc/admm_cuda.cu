@@ -16,9 +16,9 @@ double cpu_time_used;
 
 __global__ void solve_kernel(TinySolver *solver)
 {
-    int idx = threadIdx.x;
+    //////argument
 
-    // printf("%d  " , idx);
+    int idx = threadIdx.x;
 
     double KinfCache[12] = {0};
     double AdynCache[12] = {0};
@@ -30,6 +30,47 @@ __global__ void solve_kernel(TinySolver *solver)
     double x_min[10] = {0};
     double x_max[10] = {0};
 
+    // update_linear_cost(4 , 9)
+
+    __shared__ double rCache[4][9];
+    double UrefCache[9] = {0};
+    double R = 0;
+    double rho = solver->cache->rho;
+
+    // update_linear_cost(12 , 10) ;
+
+    double qCache[10] = {0};
+    double XrefCache[10] = {0};
+    double Q = 0;
+
+    __shared__ double pCache[12][10];
+    __shared__ double XrefCache_colunm[12];
+    __shared__ double PinfCache[12][12];
+
+    // termination_condition
+    int iter = solver->work->iter;
+    int check_termination = solver->settings->check_termination;
+
+    __shared__ double primal_residual_state[12], dual_residual_state[12], primal_residual_input[4], dual_residual_input[4];
+
+    double temp_prs, temp_drs, temp_pri, temp_dri;
+
+    double vCache[10] = {0};
+    double zCache[9] = {0};
+
+    double abs_pri_tol = solver->settings->abs_pri_tol;
+
+    double abs_dua_tol = solver->settings->abs_dua_tol;
+
+    /// backward_pass_grad
+
+    double Quu_inv[4] = {0};
+    __shared__ double Bdyn_colunm[4][12]; // need to optimize!
+
+    //////argument
+
+    //////(initialize)
+
     if (idx < 4)
     {
         for (int i = 0; i < 12; i++)
@@ -37,16 +78,26 @@ __global__ void solve_kernel(TinySolver *solver)
             KinfCache[i] = solver->cache->Kinf.row(idx)[i];
         }
 
-        for(int i = 0 ; i < 9 ; i++)
+        for (int i = 0; i < 9; i++)
         {
             u_min[i] = solver->work->u_min.row(idx)[i];
         }
 
-        for(int i = 0 ; i < 9 ; i++)
+        for (int i = 0; i < 9; i++)
         {
             u_max[i] = solver->work->u_max.row(idx)[i];
         }
+
+        // update_linear_cost
+        for (int i = 0; i < 9; i++)
+        {
+            UrefCache[i] = solver->work->Uref.row(idx)[i];
+        }
+
+        R = solver->work->R.row(idx)[0];
     }
+
+    // forward_pass(19)
 
     for (int i = 0; i < 12; i++)
     {
@@ -58,16 +109,78 @@ __global__ void solve_kernel(TinySolver *solver)
         BdynCache[i] = solver->work->Bdyn.row(idx)[i];
     }
 
-    for (int i = 0 ; i < 10 ; i ++)
+    for (int i = 0; i < 10; i++)
     {
         x_max[i] = solver->work->x_max.row(idx)[i];
     }
 
-    for (int i = 0 ; i < 10 ; i ++)
+    for (int i = 0; i < 10; i++)
     {
         x_min[i] = solver->work->x_min.row(idx)[i];
     }
 
+    // update_linear_cost
+    for (int i = 0; i < 10; i++)
+    {
+        qCache[i] = solver->work->Q.row(idx)[i];
+    }
+
+    for (int i = 0; i < 10; i++)
+    {
+        XrefCache[i] = solver->work->Xref.row(idx)[i];
+    }
+
+    Q = solver->work->Q.row(idx)[0];
+
+    // test
+    // if(idx == 0)
+    {
+        for (int i = 0; i < 12; i++)
+        {
+            XrefCache_colunm[i] = solver->work->Xref.col(NHORIZON - 1)[i];
+        }
+
+        // test
+        for (int i = 0; i < 12; i++)
+        {
+            for (int j = 0; j < 12; j++)
+            {
+                PinfCache[i][j] = solver->cache->Pinf.row(i)[j];
+            }
+        }
+    }
+
+    // termination_condition
+
+    for (int i = 0; i < 10; i++)
+    {
+        vCache[i] = solver->work->v.row(idx)[i];
+    }
+
+    for (int i = 0; i < 9; i++)
+    {
+        zCache[i] = solver->work->z.row(idx)[i];
+    }
+
+    /// backward_pass_grad
+
+    if (idx < 4)
+    {
+        test temp = solver->work->Bdyn.transpose();
+        for (int i = 0; i < 12; i++)
+        {
+            Bdyn_colunm[idx][i] = temp.row(idx)[i];
+        }
+
+        for (int j = 0; j < 4; j++)
+        {
+            Quu_inv[j] = solver->cache->Quu_inv.row(idx)[j];
+        }
+    }
+
+    //////(initialize)
+
+    /// somthing should put in forward_pass
     __shared__ double uCache[4][9];
     __shared__ double xCache[12][10];
     __shared__ double dCache[4][9];
@@ -99,7 +212,7 @@ __global__ void solve_kernel(TinySolver *solver)
         }
     }
 
-    double temp_x[12] = {0};
+    double temp_x[12] = {0}; // for p
     double temp_u[9] = {0};
     double temp_d[9] = {0};
 
@@ -124,7 +237,7 @@ __global__ void solve_kernel(TinySolver *solver)
 
     __syncthreads();
 
-////////// work
+    ////////// workspace
     for (int iteration = 0; iteration < ITERATION; iteration++)
     {
 
@@ -159,7 +272,7 @@ __global__ void solve_kernel(TinySolver *solver)
             __syncthreads();
         }
 
-        // update_slack
+        // update_slack(4)
         if (idx < 4)
         {
             for (int i = 0; i < 9; i++)
@@ -173,23 +286,34 @@ __global__ void solve_kernel(TinySolver *solver)
             }
 
             // Box constraints on input
-            if(en_input_bound)
+            if (en_input_bound)
             {
-                for(int i = 0 ; i < 9 ; i++)
+                for (int i = 0; i < 9; i++)
                 {
-                    znew_cache[i] = min(u_max[i] , max(u_min[i] ,                  znew_cache[i]));
+                    znew_cache[i] = min(u_max[i], max(u_min[i], znew_cache[i]));
                 }
-               
             }
 
-            //update_dual
+            // update_dual
             for (int i = 0; i < 9; i++)
             {
                 y_cache[i] += temp_u[i] - znew_cache[i];
-            }            
+            }
 
+            // update_linear_cost
+
+            for (int i = 0; i < 9; i++)
+            {
+                rCache[idx][i] = -UrefCache[i] * R;
+            }
+
+            for (int i = 0; i < 9; i++)
+            {
+                rCache[idx][i] -= rho * (znew_cache[i] - y_cache[i]);
+            }
         }
 
+        // update_slack (10)
         for (int i = 0; i < 10; i++)
         {
             temp_x[i] = xCache[idx][i];
@@ -201,23 +325,151 @@ __global__ void solve_kernel(TinySolver *solver)
         }
 
         // Box constraints on state
-        if(en_state_bound)
+        if (en_state_bound)
         {
-            for (int i = 0 ; i < 10 ; i++)
+            for (int i = 0; i < 10; i++)
             {
-                 vnew_cache[i] = min(x_max[i] , max(x_min[i] ,                  vnew_cache[i])); 
+                vnew_cache[i] = min(x_max[i], max(x_min[i], vnew_cache[i]));
             }
         }
 
-        //update_dual
+        // update_dual
         for (int i = 0; i < 10; i++)
         {
             g_cache[i] += temp_x[i] - vnew_cache[i];
-        }     
-       
+        }
 
+        //  update_linear_cost
+        for (int i = 0; i < 10; i++)
+        {
+            qCache[i] = -(XrefCache[i] * Q);
+        }
+        for (int i = 0; i < 10; i++)
+        {
+            qCache[i] -= rho * (vnew_cache[i] - g_cache[i]);
+        }
+
+        for (int i = 0; i < 12; i++)
+        {
+            temp_x[i] = PinfCache[i][idx];
+        }
+
+        pCache[idx][NHORIZON - 1] = -dot_product(XrefCache_colunm, temp_x, 12);
+
+        pCache[idx][NHORIZON - 1] -= rho * (vnew_cache[NHORIZON - 1] - g_cache[NHORIZON - 1]);
+
+        // termination_condition
+        for (int i = 0; i < 10; i++)
+        {
+            temp_x[i] = xCache[idx][i];
+        }
+        if (iter % check_termination == 0)
+        {
+            primal_residual_state[idx] = cwiseAbs_maxCoeff(temp_x, vnew_cache, 10);
+            dual_residual_state[idx] = cwiseAbs_maxCoeff(vCache, vnew_cache, 10);
+
+            // termination_condition
+            if (idx < 4)
+            {
+                primal_residual_input[idx] = cwiseAbs_maxCoeff(temp_u, znew_cache, 9);
+
+                dual_residual_input[idx] = cwiseAbs_maxCoeff(zCache, znew_cache, 9);
+            }
+
+            __syncthreads();
+
+            temp_prs = findmax(primal_residual_state, 12);
+
+            temp_drs = findmax(dual_residual_state, 12) * rho;
+
+            if (idx < 4)
+            {
+                temp_pri = findmax(primal_residual_input, 4);
+
+                temp_dri = findmax(dual_residual_input, 4) * rho;
+            }
+
+            __syncthreads();
+
+            if (temp_prs < abs_pri_tol && temp_pri < abs_pri_tol && temp_drs < abs_pri_tol && temp_dri < abs_dua_tol && temp_drs < abs_dua_tol) // I do not check that.
+            {
+                break;
+            }
+        }
+
+        // Save previous slack variables
+        for (int i = 0; i < 10; i++)
+        {
+            vCache[i] = vnew_cache[i];
+        }
+        if (idx < 4)
+        {
+            for (int j = 0; j < 9; j++)
+            {
+                zCache[j] = znew_cache[j];
+            }
+        }
+
+        // backward_pass_grad
+        for (int k = 0; k >= 0; k--)
+        {
+            //         double temp_x[12] = {0}; // for p
+            // double temp_u[9] = {0};
+            // double temp_d[9] = {0};
+
+            if (idx < 4)
+            {
+
+                for (int i = 0; i < 12; i++)
+                {
+                    temp_x[i] = pCache[k + 1][i];
+                }
+
+                for (int i = 0; i < 4; i++)
+                {
+                    double t = 0;
+                    for (int j = 0; j < 12; j++)
+                    {
+                        t += Bdyn_colunm[i][j] * temp_x[j];
+                    }
+                    temp_d[i] = t;
+                }
+
+                for (int i = 0; i < 4; i++)
+                {
+                    temp_d[i] = temp_d[i] + rCache[k][i];
+                }
+
+                double temp = 0;
+                for (int j = 0; j < 4; j++)
+                {
+                    temp += Quu_inv[j] * temp_d[j];
+                }
+
+                dCache[idx][k] = temp;
+            }
+
+            __syncthreads();
+
+            // for (int j = 0; j < 4; j++)
+            // {
+            //     temp_u[j] = uCache[j][i];
+            // }
+
+            // for (int j = 0; j < 12; j++)
+            // {
+            //     temp_x[j] = xCache[j][i];
+            // }
+
+            // xCache[idx][i + 1] = dot_product(AdynCache, temp_x, 12) + dot_product(BdynCache, temp_u, 4);
+
+            // __syncthreads();
+        }
     }
-////////// load
+
+    ////////// workspace
+
+    ////////// load
 
     if (idx < 4)
     {
@@ -226,14 +478,19 @@ __global__ void solve_kernel(TinySolver *solver)
             solver->work->u.row(idx)[i] = uCache[idx][i];
         }
 
-        for (int i = 0 ; i < 9 ; i++)
+        for (int i = 0; i < 9; i++)
         {
             solver->work->znew.row(idx)[i] = znew_cache[i];
         }
 
-        for (int i = 0 ; i < 9 ; i++)
+        for (int i = 0; i < 9; i++)
         {
             solver->work->y.row(idx)[i] = y_cache[i];
+        }
+
+        for (int i = 0; i < 9; i++)
+        {
+            solver->work->r.row(idx)[i] = rCache[idx][i];
         }
     }
 
@@ -242,18 +499,57 @@ __global__ void solve_kernel(TinySolver *solver)
         solver->work->x.row(idx)[j] = xCache[idx][j];
     }
 
-    for (int j = 0 ; j < 10 ; j++)
+    for (int j = 0; j < 10; j++)
     {
         solver->work->vnew.row(idx)[j] = vnew_cache[j];
     }
 
-    for (int i = 0 ; i < 10 ; i++)
+    for (int i = 0; i < 10; i++)
     {
         solver->work->g.row(idx)[i] = g_cache[i];
     }
 
-}
+    for (int i = 0; i < 10; i++)
+    {
+        solver->work->q.row(idx)[i] = qCache[i];
+    }
 
+    for (int i = 0; i < 10; i++)
+    {
+        solver->work->p.row(idx)[i] = pCache[idx][i];
+    }
+
+    // termination_condition:
+    solver->work->primal_residual_state = temp_prs;
+
+    solver->work->dual_residual_state = temp_drs;
+    solver->work->primal_residual_input = temp_pri;
+
+    solver->work->dual_residual_input = temp_dri;
+
+    // Save previous slack variables
+
+    for (int i = 0; i < 10; i++)
+    {
+        solver->work->v.row(idx)[i] = vCache[i];
+    }
+
+    if (idx < 4)
+    {
+        for (int i = 0; i < 9; i++)
+        {
+            solver->work->z.row(idx)[i] = zCache[i];
+        }
+
+        for (int i = 0; i < 4; i++)
+        {
+            for (int j = 0; j < 9; j++)
+            {
+                solver->work->d.row(i)[j] = dCache[i][j];
+            }
+        }
+    }
+}
 int tiny_solve_cuda(TinySolver *solver)
 {
 
@@ -316,7 +612,7 @@ int tiny_solve_cuda(TinySolver *solver)
     checkCudaErrors(cudaMemcpy(debug_workspace, solver_gpu->work, sizeof(TinyWorkspace), cudaMemcpyDeviceToHost));
 
     std::cout << "cuda_version = \n \n"
-              << debug_workspace->g << std::endl;
+              << debug_workspace->d << std::endl;
     checkCudaErrors(cudaDeviceSynchronize());
 
     start = clock(); // Record starting time
@@ -326,6 +622,11 @@ int tiny_solve_cuda(TinySolver *solver)
         forward_pass(solver);
         update_slack(solver);
         update_dual(solver);
+        update_linear_cost(solver);
+        termination_condition(solver);
+        solver->work->v = solver->work->vnew;
+        solver->work->z = solver->work->znew;
+        backward_pass_grad(solver);
     }
 
     end = clock(); // Record ending time
@@ -334,45 +635,9 @@ int tiny_solve_cuda(TinySolver *solver)
     printf("eigen CPU time used: %f seconds\n", cpu_time_used);
 
     std::cout << "orginal = \n"
-              << solver->work->g << std::endl;
+              << solver->work->d << std::endl;
 
     exit(0);
-
-    for (int i = 0; i < solver->settings->max_iter; i++)
-    {
-
-        // Solve linear system with Riccati and roll out to get new trajectory
-        forward_pass(solver);
-
-        // Project slack variables into feasible domain
-        update_slack(solver);
-
-        // Compute next iteration of dual variables
-        update_dual(solver);
-
-        // Update linear control cost terms using reference trajectory, duals, and slack variables
-        update_linear_cost(solver);
-
-        // Check for whether cost is ~minimized~ by calculating residuals
-        if (termination_condition(solver))
-        {
-            solver->work->status = 1; // TINY_SOLVED
-            return 0;
-        }
-
-        // Save previous slack variables
-        solver->work->v = solver->work->vnew;
-        solver->work->z = solver->work->znew;
-
-        backward_pass_grad(solver);
-
-        solver->work->iter = i + 1;
-
-        // std::cout << solver->work->primal_residual_state << std::endl;
-        // std::cout << solver->work->dual_residual_state << std::endl;
-        // std::cout << solver->work->primal_residual_input << std::endl;
-        // std::cout << solver->work->dual_residual_input << "\n" << std::endl;
-    }
 
     return 1;
 }

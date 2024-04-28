@@ -19,6 +19,9 @@
 #include "trajectory_data/quadrotor_20hz_y_axis_line.hpp"
 // #include <cuda_runtime.h>
 
+// #include <tinympc/admm.hpp>
+
+
 Eigen::IOFormat CleanFmt(4, 0, ", ", "\n", "[", "]");
 
 TinyCache cache;
@@ -86,40 +89,44 @@ int main()
     // Initial state
     x0 = work.Xref.col(0);
 
-    // std::cout << work.Xref << std::endl;
+   
+clock_t start, end;
+double cpu_time_used;
 
-    // for (int k = 0; k < 50; ++k)
-    // for (int j = 0; j < 1000; j++)
-    // {
+start = clock();
+        
         for (int k = 0; k < 1; ++k)
         {
             // std::cout << "tracking error: " << (x0 - work.Xref.col(1)).norm() << std::endl;
 
             // 1. Update measurement
-            work.x.col(0) = x0;
+            // work.x.col(0) = x0;
 
-            // 2. Update reference
-            work.Xref = Xref_total.block<NSTATES, NHORIZON>(0, k);
+            // // // 2. Update reference
+            // work.Xref = Xref_total.block<NSTATES, NHORIZON>(0, k);
 
-            // 3. Reset dual variables if needed
+            // // 3. Reset dual variables if needed
             // work.y = tiny_MatrixNuNhm1::Zero();
             // work.g = tiny_MatrixNxNh::Zero();
 
             // 4. Solve MPC problem
             // std::cout<<solver.cache;
             tiny_solve_cuda(&solver);
-            hello();
+            // tiny_solve(&solver);
+            // hello();
 
             // std::cout << work.iter << std::endl;
             // std::cout << work.u.col(0).transpose().format(CleanFmt) << std::endl;
 
             // 5. Simulate forward
-            x1 = work.Adyn * x0 + work.Bdyn * work.u.col(0);
-            x0 = x1;
+            // x1 = work.Adyn * x0 + work.Bdyn * work.u.col(0);
+            // x0 = x1;
 
             // std::cout << x0.transpose().format(CleanFmt) << std::endl;
         }
     // }
-
-    return 0;
+// end = clock();
+// cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
+//     printf("eigen cudaGPU time used: %f seconds\n", cpu_time_used);
+//     return 0;
 }

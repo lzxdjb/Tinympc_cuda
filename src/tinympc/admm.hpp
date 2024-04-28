@@ -4,11 +4,11 @@
 
 void backward_pass_grad(TinySolver *solver)
 {
-    for (int i = NHORIZON - 2; i >= 0; i--)
+    for (int i = 0; i >= 0; i--)
     {
         (solver->work->d.col(i)).noalias() = solver->cache->Quu_inv * (solver->work->Bdyn.transpose() * solver->work->p.col(i + 1) + solver->work->r.col(i));
 
-        (solver->work->p.col(i)).noalias() = solver->work->q.col(i) + solver->cache->AmBKt.lazyProduct(solver->work->p.col(i + 1)) - (solver->cache->Kinf.transpose()).lazyProduct(solver->work->r.col(i));
+        // (solver->work->p.col(i)).noalias() = solver->work->q.col(i) + solver->cache->AmBKt.lazyProduct(solver->work->p.col(i + 1)) - (solver->cache->Kinf.transpose()).lazyProduct(solver->work->r.col(i));
     }
 }
 
@@ -71,13 +71,17 @@ void update_dual(TinySolver *solver)
  */
 void update_linear_cost(TinySolver *solver)
 {
-    solver->work->r = -(solver->work->Uref.array().colwise() * solver->work->R.array()); // Uref = 0 so commented out for speed up. Need to uncomment if using Uref
+    solver->work->r = -(solver->work->Uref.array().colwise() * solver->work->R.array()); 
+    
+    
+    // Uref = 0 so commented out for speed up. Need to uncomment if using Uref
     (solver->work->r).noalias() -= solver->cache->rho * (solver->work->znew - solver->work->y);
 
     solver->work->q = -(solver->work->Xref.array().colwise() * solver->work->Q.array());
     (solver->work->q).noalias() -= solver->cache->rho * (solver->work->vnew - solver->work->g);
 
     solver->work->p.col(NHORIZON - 1) = -(solver->work->Xref.col(NHORIZON - 1).transpose().lazyProduct(solver->cache->Pinf));
+
     
     solver->work->p.col(NHORIZON - 1) -= solver->cache->rho * (solver->work->vnew.col(NHORIZON - 1) - solver->work->g.col(NHORIZON - 1));
 }
@@ -91,7 +95,9 @@ bool termination_condition(TinySolver *solver)
     if (solver->work->iter % solver->settings->check_termination == 0)
     {
         solver->work->primal_residual_state = (solver->work->x - solver->work->vnew).cwiseAbs().maxCoeff();
+        
         solver->work->dual_residual_state = ((solver->work->v - solver->work->vnew).cwiseAbs().maxCoeff()) * solver->cache->rho;
+        
         solver->work->primal_residual_input = (solver->work->u - solver->work->znew).cwiseAbs().maxCoeff();
         solver->work->dual_residual_input = ((solver->work->z - solver->work->znew).cwiseAbs().maxCoeff()) * solver->cache->rho;
 
@@ -112,7 +118,7 @@ int tiny_solve(TinySolver *solver)
     solver->work->status = 11; // TINY_UNSOLVED
     solver->work->iter = 0;
 
-    for (int i = 0; i < solver->settings->max_iter; i++)
+    for (int i = 0; i < 1000000; i++)
     {
         // Solve linear system with Riccati and roll out to get new trajectory
         forward_pass(solver);

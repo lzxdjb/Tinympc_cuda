@@ -17,6 +17,8 @@ using Eigen::Matrix;
     typedef Matrix<tinytype, NSTATES, NHORIZON> tiny_MatrixNxNh;       // Nu x Nh
     typedef Matrix<tinytype, NINPUTS, NHORIZON - 1> tiny_MatrixNuNhm1; // Nu x Nh-1
 
+    typedef Matrix<tinytype, 4, 12> test; // Nu x Nh-1
+
     /**
      * Matrices that must be recomputed with changes in time step, rho
      */
