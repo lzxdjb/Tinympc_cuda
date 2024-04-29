@@ -4,14 +4,14 @@
 #include "admm_kernel.cuh"
 
 #include <iostream>
-
+#include <unistd.h>
 #include <cuda_runtime.h>
 
 #define TOTAL_SIZE 9
 #define ITERATION 100
 #define checkCudaErrors(x) check((x), #x, __FILE__, __LINE__)
 
-#define outerITERATION 1100
+#define outerITERATION 1000
 
 clock_t start, end;
 double cpu_time_used;
@@ -252,196 +252,230 @@ __global__ void solve_kernel(TinySolver *solver)
     __syncthreads();
 
     ////////// workspace
-    for (int iteration = 0; iteration < ITERATION; iteration++)
+    for (int outer = 0; outer < outerITERATION; outer++)
     {
 
-        // forword_pass
-        for (int i = 0; i < 9; i++)
+        for (int iteration = 0; iteration < ITERATION; iteration++)
         {
 
-            if (idx < 4)
+            // forword_pass
+            for (int i = 0; i < 9; i++)
             {
+
+                if (idx < 4)
+                {
+                    for (int j = 0; j < 12; j++)
+                    {
+                        temp_x[j] = xCache[j][i];
+                    }
+
+                    uCache[idx][i] = -dot_product(KinfCache, temp_x, 12) - dCache[idx][i];
+                }
+
+                __syncthreads();
+
+                for (int j = 0; j < 4; j++)
+                {
+                    temp_u[j] = uCache[j][i];
+                }
+
                 for (int j = 0; j < 12; j++)
                 {
                     temp_x[j] = xCache[j][i];
                 }
 
-                uCache[idx][i] = -dot_product(KinfCache, temp_x, 12) - dCache[idx][i];
+                xCache[idx][i + 1] = dot_product(AdynCache, temp_x, 12) + dot_product(BdynCache, temp_u, 4);
+
+                // if(idx == 0)
+                // {
+                //     for(int i = 0 ; i < 12 ; i ++)
+                //     {
+                //         for(int j = 0 ; j < 10 ; j ++)
+                //         {
+                //             printf("%f = " , xCache[i][j]);
+                //         }
+                //     }
+
+                // }
+
+                __syncthreads();
             }
-
-            __syncthreads();
-
-            for (int j = 0; j < 4; j++)
-            {
-                temp_u[j] = uCache[j][i];
-            }
-
-            for (int j = 0; j < 12; j++)
-            {
-                temp_x[j] = xCache[j][i];
-            }
-
-            xCache[idx][i + 1] = dot_product(AdynCache, temp_x, 12) + dot_product(BdynCache, temp_u, 4);
-
-            // if(idx == 0)
-            // {
-            //     for(int i = 0 ; i < 12 ; i ++)
-            //     {
-            //         for(int j = 0 ; j < 10 ; j ++)
-            //         {
-            //             printf("%f = " , xCache[i][j]);
-            //         }
-            //     }
-
-            // }
-
-            __syncthreads();
-        }
-        // break;
-        // update_slack(4)
-        if (idx < 4)
-        {
-            for (int i = 0; i < 9; i++)
-            {
-                temp_u[i] = uCache[idx][i];
-            }
-
-            for (int i = 0; i < 9; i++)
-            {
-                znew_cache[i] = temp_u[i] + y_cache[i];
-            }
-
-            // Box constraints on input
-            if (en_input_bound)
+            // break;
+            // update_slack(4)
+            if (idx < 4)
             {
                 for (int i = 0; i < 9; i++)
                 {
-                    znew_cache[i] = min(u_max[i], max(u_min[i], znew_cache[i]));
+                    temp_u[i] = uCache[idx][i];
+                }
+
+                for (int i = 0; i < 9; i++)
+                {
+                    znew_cache[i] = temp_u[i] + y_cache[i];
+                }
+
+                // Box constraints on input
+                if (en_input_bound)
+                {
+                    for (int i = 0; i < 9; i++)
+                    {
+                        znew_cache[i] = min(u_max[i], max(u_min[i], znew_cache[i]));
+                    }
+                }
+
+                // update_dual
+                for (int i = 0; i < 9; i++)
+                {
+                    y_cache[i] += temp_u[i] - znew_cache[i];
+                }
+
+                // update_linear_cost
+
+                for (int i = 0; i < 9; i++)
+                {
+                    rCache[idx][i] = -UrefCache[i] * R;
+                }
+
+                for (int i = 0; i < 9; i++)
+                {
+                    rCache[idx][i] -= rho * (znew_cache[i] - y_cache[i]);
+                }
+            }
+
+            // update_slack (10)
+            for (int i = 0; i < 10; i++)
+            {
+                temp_x[i] = xCache[idx][i];
+            }
+
+            for (int i = 0; i < 10; i++)
+            {
+                vnew_cache[i] = temp_x[i] + g_cache[i];
+            }
+
+            // Box constraints on state
+            if (en_state_bound)
+            {
+                for (int i = 0; i < 10; i++)
+                {
+                    vnew_cache[i] = min(x_max[i], max(x_min[i], vnew_cache[i]));
                 }
             }
 
             // update_dual
-            for (int i = 0; i < 9; i++)
-            {
-                y_cache[i] += temp_u[i] - znew_cache[i];
-            }
-
-            // update_linear_cost
-
-            for (int i = 0; i < 9; i++)
-            {
-                rCache[idx][i] = -UrefCache[i] * R;
-            }
-
-            for (int i = 0; i < 9; i++)
-            {
-                rCache[idx][i] -= rho * (znew_cache[i] - y_cache[i]);
-            }
-        }
-
-        // update_slack (10)
-        for (int i = 0; i < 10; i++)
-        {
-            temp_x[i] = xCache[idx][i];
-        }
-
-        for (int i = 0; i < 10; i++)
-        {
-            vnew_cache[i] = temp_x[i] + g_cache[i];
-        }
-
-        // Box constraints on state
-        if (en_state_bound)
-        {
             for (int i = 0; i < 10; i++)
             {
-                vnew_cache[i] = min(x_max[i], max(x_min[i], vnew_cache[i]));
+                g_cache[i] += temp_x[i] - vnew_cache[i];
             }
-        }
 
-        // update_dual
-        for (int i = 0; i < 10; i++)
-        {
-            g_cache[i] += temp_x[i] - vnew_cache[i];
-        }
+            //  update_linear_cost
+            for (int i = 0; i < 10; i++)
+            {
+                qCache[i] = -(XrefCache[i] * Q);
+            }
+            for (int i = 0; i < 10; i++)
+            {
+                qCache[i] -= rho * (vnew_cache[i] - g_cache[i]);
+            }
 
-        //  update_linear_cost
-        for (int i = 0; i < 10; i++)
-        {
-            qCache[i] = -(XrefCache[i] * Q);
-        }
-        for (int i = 0; i < 10; i++)
-        {
-            qCache[i] -= rho * (vnew_cache[i] - g_cache[i]);
-        }
+            for (int i = 0; i < 12; i++)
+            {
+                temp_x[i] = PinfCache[i][idx];
+            }
 
-        for (int i = 0; i < 12; i++)
-        {
-            temp_x[i] = PinfCache[i][idx];
-        }
+            pCache[idx][NHORIZON - 1] = -dot_product(XrefCache_colunm, temp_x, 12);
 
-        pCache[idx][NHORIZON - 1] = -dot_product(XrefCache_colunm, temp_x, 12);
-
-        pCache[idx][NHORIZON - 1] -= rho * (vnew_cache[NHORIZON - 1] - g_cache[NHORIZON - 1]);
-
-        // termination_condition
-        for (int i = 0; i < 10; i++)
-        {
-            temp_x[i] = xCache[idx][i];
-        }
-        if (iter % check_termination == 0)
-        {
-            primal_residual_state[idx] = cwiseAbs_maxCoeff(temp_x, vnew_cache, 10);
-            dual_residual_state[idx] = cwiseAbs_maxCoeff(vCache, vnew_cache, 10);
+            pCache[idx][NHORIZON - 1] -= rho * (vnew_cache[NHORIZON - 1] - g_cache[NHORIZON - 1]);
 
             // termination_condition
+            for (int i = 0; i < 10; i++)
+            {
+                temp_x[i] = xCache[idx][i];
+            }
+            if (iter % check_termination == 0)
+            {
+                primal_residual_state[idx] = cwiseAbs_maxCoeff(temp_x, vnew_cache, 10);
+                dual_residual_state[idx] = cwiseAbs_maxCoeff(vCache, vnew_cache, 10);
+
+                // termination_condition
+                if (idx < 4)
+                {
+                    primal_residual_input[idx] = cwiseAbs_maxCoeff(temp_u, znew_cache, 9);
+
+                    dual_residual_input[idx] = cwiseAbs_maxCoeff(zCache, znew_cache, 9);
+                }
+
+                __syncthreads();
+
+                temp_prs = findmax(primal_residual_state, 12);
+
+                temp_drs = findmax(dual_residual_state, 12) * rho;
+
+                if (idx < 4)
+                {
+                    temp_pri = findmax(primal_residual_input, 4);
+
+                    temp_dri = findmax(dual_residual_input, 4) * rho;
+                }
+
+                __syncthreads();
+
+                if (temp_prs < abs_pri_tol && temp_pri < abs_pri_tol && temp_drs < abs_pri_tol && temp_dri < abs_dua_tol && temp_drs < abs_dua_tol) // I do not check that.
+                {
+                    // break; // Do not do anything
+                }
+            }
+
+            // Save previous slack variables
+            for (int i = 0; i < 10; i++)
+            {
+                vCache[i] = vnew_cache[i];
+            }
             if (idx < 4)
             {
-                primal_residual_input[idx] = cwiseAbs_maxCoeff(temp_u, znew_cache, 9);
-
-                dual_residual_input[idx] = cwiseAbs_maxCoeff(zCache, znew_cache, 9);
+                for (int j = 0; j < 9; j++)
+                {
+                    zCache[j] = znew_cache[j];
+                }
             }
 
-            __syncthreads();
-
-            temp_prs = findmax(primal_residual_state, 12);
-
-            temp_drs = findmax(dual_residual_state, 12) * rho;
-
-            if (idx < 4)
+            // backward_pass_grad
+            for (int k = 8; k >= 0; k--)
             {
-                temp_pri = findmax(primal_residual_input, 4);
 
-                temp_dri = findmax(dual_residual_input, 4) * rho;
-            }
+                if (idx < 4)
+                {
 
-            __syncthreads();
+                    for (int i = 0; i < 12; i++)
+                    {
+                        temp_x[i] = pCache[i][k + 1];
+                    }
 
-            if (temp_prs < abs_pri_tol && temp_pri < abs_pri_tol && temp_drs < abs_pri_tol && temp_dri < abs_dua_tol && temp_drs < abs_dua_tol) // I do not check that.
-            {
-                // break; // Do not do anything
-            }
-        }
+                    for (int i = 0; i < 4; i++)
+                    {
+                        double t = 0;
+                        for (int j = 0; j < 12; j++)
+                        {
+                            t += Bdyn_colunm[i][j] * temp_x[j];
+                        }
+                        temp_d[i] = t;
+                    }
 
-        // Save previous slack variables
-        for (int i = 0; i < 10; i++)
-        {
-            vCache[i] = vnew_cache[i];
-        }
-        if (idx < 4)
-        {
-            for (int j = 0; j < 9; j++)
-            {
-                zCache[j] = znew_cache[j];
-            }
-        }
+                    for (int i = 0; i < 4; i++)
+                    {
+                        temp_d[i] = temp_d[i] + rCache[i][k];
+                    }
 
-        // backward_pass_grad
-        for (int k = 8; k >= 0; k--)
-        {
+                    double temp = 0;
+                    for (int j = 0; j < 4; j++)
+                    {
+                        temp += Quu_inv[j] * temp_d[j];
+                    }
 
-            if (idx < 4)
-            {
+                    dCache[idx][k] = temp;
+                }
+
+                __syncthreads();
 
                 for (int i = 0; i < 12; i++)
                 {
@@ -450,47 +484,13 @@ __global__ void solve_kernel(TinySolver *solver)
 
                 for (int i = 0; i < 4; i++)
                 {
-                    double t = 0;
-                    for (int j = 0; j < 12; j++)
-                    {
-                        t += Bdyn_colunm[i][j] * temp_x[j];
-                    }
-                    temp_d[i] = t;
+                    temp_d[i] = rCache[i][k];
                 }
 
-                for (int i = 0; i < 4; i++)
-                {
-                    temp_d[i] = temp_d[i] + rCache[i][k];
-                }
+                pCache[idx][k] = qCache[k] + dot_product(AmBKt, temp_x, 12) - dot_product(Kinf_colunm, temp_d, 4);
 
-                double temp = 0;
-                for (int j = 0; j < 4; j++)
-                {
-                    temp += Quu_inv[j] * temp_d[j];
-                }
-
-                dCache[idx][k] = temp;
+                __syncthreads();
             }
-
-            __syncthreads();
-
-            for (int i = 0; i < 12; i++)
-            {
-                temp_x[i] = pCache[i][k + 1];
-            }
-
-            for (int i = 0; i < 4; i++)
-            {
-                temp_d[i] = rCache[i][k];
-            }
-
-            pCache[idx][k] = qCache[k] + dot_product(AmBKt, temp_x, 12) - dot_product(Kinf_colunm, temp_d, 4);
-
-          
-
-            __syncthreads();
-
-        
         }
     }
 
@@ -521,10 +521,10 @@ __global__ void solve_kernel(TinySolver *solver)
     //     }
     // }
 
-    // for (int j = 0; j < 10; j++)
-    // {
-    //     solver->work->x.row(idx)[j] = xCache[idx][j];
-    // }
+    for (int j = 0; j < 10; j++)
+    {
+        solver->work->x.row(idx)[j] = xCache[idx][j];
+    }
 
     //     for (int j = 0; j < 10; j++)
     //     {
@@ -583,7 +583,7 @@ __global__ void solve_kernel(TinySolver *solver)
     //         solver->work->p.row(idx)[i] = pCache[idx][i];
     //     }
 
-    // __syncthreads();
+    __syncthreads();
 }
 int tiny_solve_cuda(TinySolver *solver)
 {
@@ -591,7 +591,6 @@ int tiny_solve_cuda(TinySolver *solver)
 
     solver->work->status = 11; // TINY_UNSOLVED
     solver->work->iter = 0;
-
 
     TinySolver *solver_gpu;
     checkCudaErrors(cudaMallocManaged((void **)&solver_gpu, sizeof(TinySolver)));
@@ -630,82 +629,54 @@ int tiny_solve_cuda(TinySolver *solver)
     solver->settings = host_setting;
     solver->work = host_workspace;
 
-    cpu_time_used = 0 ;
+    cpu_time_used = 0;
+
+    cudaEvent_t start1;
+    cudaEventCreate(&start1);
+    cudaEvent_t stop1;
+    cudaEventCreate(&stop1);
+    cudaEventRecord(start1, NULL);
     start = clock(); // Record starting time
 
-    for (int i = 0; i < outerITERATION; i++)
-    {
-        solve_kernel<<<1, 12>>>(solver_gpu);
-    }
-
-    end = clock(); // Record ending time
-    cpu_time_used += ((double)(end - start)) / CLOCKS_PER_SEC;
-    printf("eigen GPU time used: %f seconds\n", cpu_time_used);
-    
-    // TinyCache *debug_cache;
-    // checkCudaErrors(cudaMallocHost((void **)&debug_cache, sizeof(TinyCache)));
-    // checkCudaErrors(cudaMemcpy(debug_cache, solver_gpu->cache, sizeof(TinySolver), cudaMemcpyDeviceToHost));
-
-    // TinyCache *debug_setting;
-    // checkCudaErrors(cudaMallocHost((void **)&debug_setting, sizeof(TinySettings)));
-    // checkCudaErrors(cudaMemcpy(debug_setting, solver_gpu->settings, sizeof(TinySettings), cudaMemcpyDeviceToHost));
-
-    // TinyWorkspace *debug_workspace;
-    // checkCudaErrors(cudaMallocHost((void **)&debug_workspace, sizeof(TinyWorkspace)));
-    // checkCudaErrors(cudaMemcpy(debug_workspace, solver_gpu->work, sizeof(TinyWorkspace), cudaMemcpyDeviceToHost));
-
-    // std::cout << "cuda_version = \n \n"
-    //           << debug_workspace->u << std::endl;
-    // checkCudaErrors(cudaDeviceSynchronize());
-
-    // // exit(0);
-
-    // cpu_time_used = 0 ;
-    // start = clock();
-
-    // for (int j = 0; j < outerITERATION; j++)
+    // for (int i = 0; i < outerITERATION; i++)
     // {
-    //     for (int k = 0; k < ITERATION; k++)
-    //     {
-    //         // std::cout<<"MAYBE mistake 22222" << solver->cache->Kinf<<std::endl;
-
-    //         forward_pass(solver);
-    //         update_slack(solver);
-    //         update_dual(solver);
-    //         update_linear_cost(solver);
-    //         // if(termination_condition(solver))
-    //         // {
-    //         //     std::cout<<"k = "<<k <<std::endl;
-    //         //     break;
-    //         // }
-            
-    //         solver->work->v = solver->work->vnew;
-    //         solver->work->z = solver->work->znew;
-    //         backward_pass_grad(solver);
-    //     }
-
-    //     // solver->work->x.Zero() ;
-    //     // solver->work->u.Zero() ;
+    solve_kernel<<<1, 12>>>(solver_gpu);
     // }
 
-    // end = clock(); // Record ending time
-    // cpu_time_used += ((double)(end - start)) / CLOCKS_PER_SEC;
-    // printf("eigen CPU time used: %f seconds\n", cpu_time_used);
+    cudaEventRecord(stop1, NULL);
+    cudaEventSynchronize(stop1);
+    float msecTotal1 = 0.0f;
+    cudaEventElapsedTime(&msecTotal1, start1, stop1);
 
-    //  std::cout << "cuda_version = \n \n"
-    //           << solver->work->u << std::endl;
-    // checkCudaErrors(cudaDeviceSynchronize());
+    msecTotal1 = msecTotal1 / 1e+3;
+    printf("eigen GPU time used: %f seconds\n", msecTotal1);
 
-    // return 1;
+    TinyCache *debug_cache;
+    checkCudaErrors(cudaMallocHost((void **)&debug_cache, sizeof(TinyCache)));
+    checkCudaErrors(cudaMemcpy(debug_cache, solver_gpu->cache, sizeof(TinySolver), cudaMemcpyDeviceToHost));
+
+    TinyCache *debug_setting;
+    checkCudaErrors(cudaMallocHost((void **)&debug_setting, sizeof(TinySettings)));
+    checkCudaErrors(cudaMemcpy(debug_setting, solver_gpu->settings, sizeof(TinySettings), cudaMemcpyDeviceToHost));
+
+    TinyWorkspace *debug_workspace;
+    checkCudaErrors(cudaMallocHost((void **)&debug_workspace, sizeof(TinyWorkspace)));
+    checkCudaErrors(cudaMemcpy(debug_workspace, solver_gpu->work, sizeof(TinyWorkspace), cudaMemcpyDeviceToHost));
+
+    // std::cout << "cuda_version = \n \n"
+    //           << debug_workspace->x << std::endl;
+    checkCudaErrors(cudaDeviceSynchronize());
+
+    return 1;
 }
 
 int tiny_solve_cpu(TinySolver *solver)
 {
     start = clock();
 
-   for(int j = 0 ; j < outerITERATION ; j ++)
-   {
-    for (int k = 0; k < ITERATION; k++)
+    for (int j = 0; j < outerITERATION; j++)
+    {
+        for (int k = 0; k < ITERATION; k++)
         {
             forward_pass(solver);
             update_slack(solver);
@@ -715,11 +686,8 @@ int tiny_solve_cpu(TinySolver *solver)
             solver->work->v = solver->work->vnew;
             solver->work->z = solver->work->znew;
             backward_pass_grad(solver);
-           
         }
-   }
-        
-    
+    }
 
     end = clock(); // Record ending time
     cpu_time_used += ((double)(end - start)) / CLOCKS_PER_SEC;
