@@ -11,7 +11,7 @@
 #define ITERATION 100
 #define checkCudaErrors(x) check((x), #x, __FILE__, __LINE__)
 
-#define outerITERATION 1
+#define outerITERATION 1100
 
 clock_t start, end;
 double cpu_time_used;
@@ -592,8 +592,7 @@ int tiny_solve_cuda(TinySolver *solver)
     solver->work->status = 11; // TINY_UNSOLVED
     solver->work->iter = 0;
 
-cpu_time_used = 0 ;
-    start = clock(); // Record starting time
+
     TinySolver *solver_gpu;
     checkCudaErrors(cudaMallocManaged((void **)&solver_gpu, sizeof(TinySolver)));
 
@@ -631,7 +630,8 @@ cpu_time_used = 0 ;
     solver->settings = host_setting;
     solver->work = host_workspace;
 
-
+    cpu_time_used = 0 ;
+    start = clock(); // Record starting time
 
     for (int i = 0; i < outerITERATION; i++)
     {
@@ -642,69 +642,70 @@ cpu_time_used = 0 ;
     cpu_time_used += ((double)(end - start)) / CLOCKS_PER_SEC;
     printf("eigen GPU time used: %f seconds\n", cpu_time_used);
     
-    TinyCache *debug_cache;
-    checkCudaErrors(cudaMallocHost((void **)&debug_cache, sizeof(TinyCache)));
-    checkCudaErrors(cudaMemcpy(debug_cache, solver_gpu->cache, sizeof(TinySolver), cudaMemcpyDeviceToHost));
+    // TinyCache *debug_cache;
+    // checkCudaErrors(cudaMallocHost((void **)&debug_cache, sizeof(TinyCache)));
+    // checkCudaErrors(cudaMemcpy(debug_cache, solver_gpu->cache, sizeof(TinySolver), cudaMemcpyDeviceToHost));
 
-    TinyCache *debug_setting;
-    checkCudaErrors(cudaMallocHost((void **)&debug_setting, sizeof(TinySettings)));
-    checkCudaErrors(cudaMemcpy(debug_setting, solver_gpu->settings, sizeof(TinySettings), cudaMemcpyDeviceToHost));
+    // TinyCache *debug_setting;
+    // checkCudaErrors(cudaMallocHost((void **)&debug_setting, sizeof(TinySettings)));
+    // checkCudaErrors(cudaMemcpy(debug_setting, solver_gpu->settings, sizeof(TinySettings), cudaMemcpyDeviceToHost));
 
-    TinyWorkspace *debug_workspace;
-    checkCudaErrors(cudaMallocHost((void **)&debug_workspace, sizeof(TinyWorkspace)));
-    checkCudaErrors(cudaMemcpy(debug_workspace, solver_gpu->work, sizeof(TinyWorkspace), cudaMemcpyDeviceToHost));
+    // TinyWorkspace *debug_workspace;
+    // checkCudaErrors(cudaMallocHost((void **)&debug_workspace, sizeof(TinyWorkspace)));
+    // checkCudaErrors(cudaMemcpy(debug_workspace, solver_gpu->work, sizeof(TinyWorkspace), cudaMemcpyDeviceToHost));
 
-    std::cout << "cuda_version = \n \n"
-              << debug_workspace->u << std::endl;
-    checkCudaErrors(cudaDeviceSynchronize());
+    // std::cout << "cuda_version = \n \n"
+    //           << debug_workspace->u << std::endl;
+    // checkCudaErrors(cudaDeviceSynchronize());
 
-    // exit(0);
+    // // exit(0);
 
-    cpu_time_used = 0 ;
-    start = clock();
+    // cpu_time_used = 0 ;
+    // start = clock();
 
-    for (int j = 0; j < outerITERATION; j++)
-    {
-        for (int k = 0; k < ITERATION; k++)
-        {
-            // std::cout<<"MAYBE mistake 22222" << solver->cache->Kinf<<std::endl;
+    // for (int j = 0; j < outerITERATION; j++)
+    // {
+    //     for (int k = 0; k < ITERATION; k++)
+    //     {
+    //         // std::cout<<"MAYBE mistake 22222" << solver->cache->Kinf<<std::endl;
 
-            forward_pass(solver);
-            update_slack(solver);
-            update_dual(solver);
-            update_linear_cost(solver);
-            // if(termination_condition(solver))
-            // {
-            //     std::cout<<"k = "<<k <<std::endl;
-            //     break;
-            // }
+    //         forward_pass(solver);
+    //         update_slack(solver);
+    //         update_dual(solver);
+    //         update_linear_cost(solver);
+    //         // if(termination_condition(solver))
+    //         // {
+    //         //     std::cout<<"k = "<<k <<std::endl;
+    //         //     break;
+    //         // }
             
-            solver->work->v = solver->work->vnew;
-            solver->work->z = solver->work->znew;
-            backward_pass_grad(solver);
-        }
+    //         solver->work->v = solver->work->vnew;
+    //         solver->work->z = solver->work->znew;
+    //         backward_pass_grad(solver);
+    //     }
 
-        // solver->work->x.Zero() ;
-        // solver->work->u.Zero() ;
-    }
+    //     // solver->work->x.Zero() ;
+    //     // solver->work->u.Zero() ;
+    // }
 
-    end = clock(); // Record ending time
-    cpu_time_used += ((double)(end - start)) / CLOCKS_PER_SEC;
-    printf("eigen CPU time used: %f seconds\n", cpu_time_used);
+    // end = clock(); // Record ending time
+    // cpu_time_used += ((double)(end - start)) / CLOCKS_PER_SEC;
+    // printf("eigen CPU time used: %f seconds\n", cpu_time_used);
 
-     std::cout << "cuda_version = \n \n"
-              << solver->work->u << std::endl;
-    checkCudaErrors(cudaDeviceSynchronize());
+    //  std::cout << "cuda_version = \n \n"
+    //           << solver->work->u << std::endl;
+    // checkCudaErrors(cudaDeviceSynchronize());
 
-    return 1;
+    // return 1;
 }
 
 int tiny_solve_cpu(TinySolver *solver)
 {
     start = clock();
 
-   
-        for (int k = 0; k < ITERATION; k++)
+   for(int j = 0 ; j < outerITERATION ; j ++)
+   {
+    for (int k = 0; k < ITERATION; k++)
         {
             forward_pass(solver);
             update_slack(solver);
@@ -716,6 +717,8 @@ int tiny_solve_cpu(TinySolver *solver)
             backward_pass_grad(solver);
            
         }
+   }
+        
     
 
     end = clock(); // Record ending time

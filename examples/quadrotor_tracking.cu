@@ -13,7 +13,7 @@
 // Inputs: u1, u2, u3, u4 (motor thrust 0-1, order from Crazyflie)
 
 #include <iostream>
-
+#include<unistd.h>
 #include <tinympc/admm_cuda.cuh>
 #include "problem_data/quadrotor_20hz_params.hpp"
 #include "trajectory_data/quadrotor_20hz_y_axis_line.hpp"
@@ -107,6 +107,7 @@ int main()
             // std::cout << "tracking error: " << (x0 - work.Xref.col(1)).norm() << std::endl;
 
             // 1. Update measurement
+            // sleep(1);
             work.x.col(0) = x0;
 
 
@@ -125,7 +126,9 @@ int main()
 
             // std::cout<<"MAYBE mistake outer" << solver.cache->Kinf<<std::endl;
 
+            tiny_solve_cpu(&solver);
             tiny_solve_cuda(&solver);
+
             // hello();
 
             // std::cout << work.iter << std::endl;
