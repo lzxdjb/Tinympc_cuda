@@ -11,7 +11,7 @@
 #define ITERATION 100
 #define checkCudaErrors(x) check((x), #x, __FILE__, __LINE__)
 
-#define outerITERATION 1000
+#define outerITERATION 300
 
 clock_t start, end;
 double cpu_time_used;
